@@ -34,6 +34,7 @@ class WallViewModel: ObservableObject {
     private let postsLimit = 10
     private var isSettingUpFirstPage: Bool = false
     private var userIdsToFetchFromSnapshot: Set<String> = []
+    private var oldestPostTimestamp: Timestamp?
 
     init() {
         fetchPosts()
@@ -62,6 +63,7 @@ class WallViewModel: ObservableObject {
         self.errorMessage = nil
         self.isSettingUpFirstPage = true
         self.userIdsToFetchFromSnapshot = []
+        self.oldestPostTimestamp = nil
 
         var query: Query = db.collection("posts")
 
@@ -123,6 +125,7 @@ class WallViewModel: ObservableObject {
                 self.lastDocumentSnapshot = snapshot.documents.last
                 self.hasMorePosts = snapshot.documents.count == self.postsLimit
                 self.isSettingUpFirstPage = false
+                self.oldestPostTimestamp = self.posts.last?.timestamp
             }
             
             self.errorMessage = nil
@@ -179,8 +182,59 @@ class WallViewModel: ObservableObject {
             }
 
             self.posts.append(contentsOf: newPosts)
+            
+            if let oldestNewPost = newPosts.last {
+                self.oldestPostTimestamp = oldestNewPost.timestamp
+                self.expandListenerRange()
+            }
+            
             self.lastDocumentSnapshot = documents.last
             self.hasMorePosts = documents.count == self.postsLimit
+        }
+    }
+    
+    private func expandListenerRange() {
+        guard let oldestTimestamp = oldestPostTimestamp else { return }
+        
+        listenerRegistration?.remove()
+        
+        var query: Query = db.collection("posts")
+            .whereField("timestamp", isGreaterThanOrEqualTo: oldestTimestamp)
+        
+        if isMyPostsFilterActive, let currentUserID = Auth.auth().currentUser?.uid {
+            query = query.whereField("userId", isEqualTo: currentUserID)
+        }
+        
+        listenerRegistration = query.addSnapshotListener { querySnapshot, error in
+            if let error {
+                print("Error in expanded listener: \(error.localizedDescription)")
+                return
+            }
+            
+            guard let snapshot = querySnapshot else { return }
+            
+            snapshot.documentChanges.forEach { diff in
+                guard let changedPost = try? diff.document.data(as: Post.self) else {
+                    print("Failed to decode post in expanded listener")
+                    return
+                }
+                
+                switch diff.type {
+                case .removed:
+                    self.posts.removeAll(where: { $0.id == changedPost.id })
+                case .modified:
+                    if let index = self.posts.firstIndex(where: { $0.id == changedPost.id }) {
+                        self.posts[index] = changedPost
+                    }
+                case .added:
+                    // Only add if it's newer than our oldest loaded post and not already in the list
+                    if changedPost.timestamp.dateValue() >= oldestTimestamp.dateValue() &&
+                       !self.posts.contains(where: { $0.id == changedPost.id }) {
+                        self.posts.append(changedPost)
+                        self.posts.sort(by: { $0.timestamp.dateValue() > $1.timestamp.dateValue() })
+                    }
+                }
+            }
         }
     }
 
