@@ -11,12 +11,12 @@ struct LoginView: View {
     @StateObject var authViewModel = AuthenticationViewModel()
 
     var body: some View {
+        
         VStack {
+            
+            Divider()
+            
             Spacer()
-            Text("Wall")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .padding(.bottom, 50)
 
             Button(action: {
                 authViewModel.signInWithGoogle()
@@ -24,13 +24,13 @@ struct LoginView: View {
                 HStack {
                     
                     Text("Sign In With Google")
-                        .fontWeight(.semibold)
+                        .fontWeight(.bold)
                 }
                 .padding()
-                .frame(maxWidth: .infinity)
-                .background(Color.blue)
+                .frame(maxWidth: .infinity, maxHeight: 44)
+                .background(Color("ButtonColor"))
                 .foregroundColor(.white)
-                .cornerRadius(15)
+                .cornerRadius(22)
             }
             .padding(.horizontal, 40)
 
@@ -41,6 +41,8 @@ struct LoginView: View {
             }
             Spacer()
         }
+        .navigationTitle("Wall")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
