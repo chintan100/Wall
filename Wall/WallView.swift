@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct WallView: View {
+    
     @StateObject var wallViewModel = WallViewModel()
     @ObservedObject var authViewModel: AuthenticationViewModel
     
@@ -19,28 +20,31 @@ struct WallView: View {
             
             VStack(spacing: 10) {
                 
-                TextField("Write something here...", text: $wallViewModel.newMessage)
+                TextField("Write something here...", text: $wallViewModel.newMessage, axis:.vertical)
                     .textFieldStyle(DefaultTextFieldStyle())
                     .font(.system(size: 20))
+                    .lineLimit(4)
                 
-                HStack{
+//                HStack{
                     
                     Button(action: {
                         
                         wallViewModel.addPost()
                         
                     }) {
-                        Text("Add to the wall")
+                        Text(wallViewModel.isAddingPost ? "Adding to the wall..." : "Add to the wall")
+                            .frame(maxWidth: .infinity)
                             .frame(height: 23)
                             .padding(.horizontal)
                             .padding(.vertical, 10)
-                            .background(Color("ButtonColor"))
+                            .background(wallViewModel.isAddingPost ? Color.gray : Color("ButtonColor"))
                             .foregroundColor(.white)
                             .cornerRadius(8)
                     }
+                    .disabled(wallViewModel.isAddingPost)
                     
-                    Spacer()
-                }
+//                    Spacer()
+//                }
             }
             .padding()
             
@@ -87,6 +91,14 @@ struct WallView: View {
                             }
                         }
                         .padding(.vertical, 8)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if wallViewModel.canDeletePost(post) {
+                                Button("Delete") {
+                                    wallViewModel.deletePost(post)
+                                }
+                                .tint(.red)
+                            }
+                        }
                     }
                 }
                 .listStyle(PlainListStyle())
