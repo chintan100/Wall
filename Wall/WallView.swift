@@ -11,6 +11,7 @@ import FirebaseAuth
 struct WallView: View {
     
     @StateObject var wallViewModel = WallViewModel()
+    @StateObject var userViewModel = UserViewModel()
     @ObservedObject var authViewModel: AuthenticationViewModel
     @Environment(\.scenePhase) private var scenePhase
     
@@ -73,7 +74,7 @@ struct WallView: View {
                             HStack {
                                 
                                 ZStack { // Use ZStack for ProgressView overlay or fallback
-                                    let user = wallViewModel.usersCache[post.userId]
+                                    let user = userViewModel.usersCache[post.userId]
                                     let photoURLString = user?.photoURL
                                     
                                     if let urlString = photoURLString, let photoDisplayURL = URL(string: urlString) {
@@ -107,7 +108,7 @@ struct WallView: View {
                                             .frame(width: 40, height: 40)
                                     }
                                     
-                                    if let user = wallViewModel.usersCache[post.userId], user.isOnline == true {
+                                    if let user = userViewModel.usersCache[post.userId], user.isOnline == true {
                                         Circle()
                                             .fill(Color.green)
                                             .frame(width: 12, height: 12)
@@ -120,7 +121,7 @@ struct WallView: View {
                                 }
                                 
                                 VStack(alignment: .leading) {
-                                    Text(wallViewModel.usersCache[post.userId]?.displayName ?? post.userName)
+                                    Text(userViewModel.usersCache[post.userId]?.displayName ?? post.userName)
                                         .font(.headline)
                                     Text(post.message)
                                         .font(.body)
@@ -175,30 +176,31 @@ struct WallView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 
                 Button("Log Out") {
-                    wallViewModel.setUserOffline()
+                    userViewModel.setUserOffline()
                     authViewModel.signOut()
                 }
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    wallViewModel.toggleMyPostsFilter()
+                    wallViewModel.toggleMyPostsFilter(userViewModel: userViewModel)
                 } label: {
                     Image(systemName: wallViewModel.isMyPostsFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
             }
         }
         .onAppear {
-            wallViewModel.setUserOnline()
+            userViewModel.setUserOnline()
+            wallViewModel.setUserViewModel(userViewModel)
         }
         .onDisappear {
-            wallViewModel.setUserOffline()
+            userViewModel.setUserOffline()
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
-                wallViewModel.setUserOnline()
+                userViewModel.setUserOnline()
             case .background, .inactive:
-                wallViewModel.setUserOffline()
+                userViewModel.setUserOffline()
             @unknown default:
                 break
             }

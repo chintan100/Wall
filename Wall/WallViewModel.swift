@@ -27,87 +27,29 @@ class WallViewModel: ObservableObject {
     @Published var hasMorePosts = true
     @Published var isMyPostsFilterActive: Bool = false
     
-    @Published var usersCache: [String: User] = [:]
+    private var userViewModel: UserViewModel?
 
     private var db = Firestore.firestore()
     private var listenerRegistration: ListenerRegistration?
-    private var userStatusListener: ListenerRegistration?
     private let postsLimit = 10
     private var isSettingUpFirstPage: Bool = false
     private var userIdsToFetchFromSnapshot: Set<String> = []
 
     init() {
         fetchPosts()
-        listenToUserStatusUpdates()
     }
 
     deinit {
         listenerRegistration?.remove()
-        userStatusListener?.remove()
-        setUserOffline()
     }
 
-    func setUserOnline() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
-        
-        let userRef = db.collection("users").document(currentUserId)
-        userRef.updateData([
-            "isOnline": true,
-            "lastSeen": Timestamp(date: Date())
-        ]) { error in
-            if let error = error {
-                print("Error setting user online: \(error.localizedDescription)")
-            }
-        }
+    func setUserViewModel(_ userViewModel: UserViewModel) {
+        self.userViewModel = userViewModel
     }
 
-    func setUserOffline() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
-        
-        let userRef = db.collection("users").document(currentUserId)
-        userRef.updateData([
-            "isOnline": false,
-            "lastSeen": Timestamp(date: Date())
-        ]) { error in
-            if let error = error {
-                print("Error setting user offline: \(error.localizedDescription)")
-            }
-        }
-    }
-
-    private func listenToUserStatusUpdates() {
-        userStatusListener = db.collection("users").addSnapshotListener { [weak self] querySnapshot, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Error listening to user status updates: \(error.localizedDescription)")
-                return
-            }
-            
-            guard let snapshot = querySnapshot else { return }
-            
-            snapshot.documentChanges.forEach { diff in
-                guard let updatedUser = try? diff.document.data(as: User.self) else { return }
-                
-                switch diff.type {
-                case .added, .modified:
-                    if let isOnline = updatedUser.isOnline {
-                        self.usersCache[updatedUser.uid] = updatedUser
-                    } else {
-                        var updatedUserCopy = updatedUser
-                        updatedUserCopy.isOnline = false
-                        self.usersCache[updatedUser.uid] = updatedUserCopy
-                    }
-                case .removed:
-                    self.usersCache.removeValue(forKey: updatedUser.uid)
-                }
-            }
-        }
-    }
-
-    func toggleMyPostsFilter() {
+    func toggleMyPostsFilter(userViewModel: UserViewModel) {
         isMyPostsFilterActive.toggle()
-        self.usersCache = [:]
+        userViewModel.usersCache = [:]
         fetchPosts()
     }
 
@@ -151,7 +93,7 @@ class WallViewModel: ObservableObject {
                     print("Failed to decode post from document change")
                     return
                 }
-                if !self.usersCache.keys.contains(changedPost.userId) {
+                if let userViewModel = self.userViewModel, !userViewModel.usersCache.keys.contains(changedPost.userId) {
                      self.userIdsToFetchFromSnapshot.insert(changedPost.userId)
                 }
                 
@@ -173,8 +115,8 @@ class WallViewModel: ObservableObject {
 
             self.posts.sort(by: { $0.timestamp.dateValue() > $1.timestamp.dateValue() })
             
-            if !self.userIdsToFetchFromSnapshot.isEmpty {
-                self.fetchUserProfiles(Array(self.userIdsToFetchFromSnapshot))
+            if !self.userIdsToFetchFromSnapshot.isEmpty, let userViewModel = self.userViewModel {
+                userViewModel.fetchUserProfiles(Array(self.userIdsToFetchFromSnapshot))
             }
             
             if self.isSettingUpFirstPage {
@@ -231,55 +173,14 @@ class WallViewModel: ObservableObject {
                 try? document.data(as: Post.self)
             }
             let newUserIds = Set(newPosts.map { $0.userId })
-            let userIdsToFetch = newUserIds.filter { !self.usersCache.keys.contains($0) }
+            let userIdsToFetch = newUserIds.filter { self.userViewModel?.usersCache.keys.contains($0) == false }
             if !userIdsToFetch.isEmpty {
-                self.fetchUserProfiles(Array(userIdsToFetch))
+                self.userViewModel?.fetchUserProfiles(Array(userIdsToFetch))
             }
 
             self.posts.append(contentsOf: newPosts)
             self.lastDocumentSnapshot = documents.last
             self.hasMorePosts = documents.count == self.postsLimit
-        }
-    }
-
-    private func fetchUserProfiles(_ userIds: [String]) {
-        guard !userIds.isEmpty else { return }
-
-        let dbUsers = db.collection("users")
-        
-        let chunks = userIds.chunked(into: 10)
-
-        for chunk in chunks {
-            guard !chunk.isEmpty else { continue }
-            
-            dbUsers.whereField(FieldPath.documentID(), in: chunk).getDocuments { [weak self] (querySnapshot, error) in
-                guard let self = self else { return }
-
-                if let error = error {
-                    print("Error fetching user profiles for chunk \(chunk.joined(separator: ", ")): \(error.localizedDescription)")
-                    return
-                }
-
-                guard let documents = querySnapshot?.documents else {
-                    print("No documents found for user profile chunk \(chunk.joined(separator: ", ")).")
-                    return
-                }
-
-                for document in documents {
-                    do {
-                        let user = try document.data(as: User.self)
-                        if let isOnline = user.isOnline {
-                            self.usersCache[user.uid] = user
-                        } else {
-                            var userCopy = user
-                            userCopy.isOnline = false
-                            self.usersCache[user.uid] = userCopy
-                        }
-                    } catch {
-                        print("Error decoding user profile for \(document.documentID): \(error.localizedDescription)")
-                    }
-                }
-            }
         }
     }
 
