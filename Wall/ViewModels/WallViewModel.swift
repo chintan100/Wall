@@ -18,6 +18,7 @@ class WallViewModel: ObservableObject {
     @Published var isLoadingMore = false
     @Published var hasMorePosts = true
     @Published var isMyPostsFilterActive: Bool = false
+    @Published var isLoadingPosts = false
     
     private let postRepository: PostRepositoryProtocol
     private var listenerRegistration: ListenerRegistration?
@@ -40,7 +41,9 @@ class WallViewModel: ObservableObject {
     
     func fetchPosts() {
         listenerRegistration?.remove()
-        posts = []
+        if posts.isEmpty {
+            isLoadingPosts = true
+        }
         lastDocumentSnapshot = nil
         hasMorePosts = true
         errorMessage = nil
@@ -56,10 +59,12 @@ class WallViewModel: ObservableObject {
                 self.posts = result.posts.sorted { $0.timestamp.dateValue() > $1.timestamp.dateValue() }
                 self.lastDocumentSnapshot = result.lastDocument
                 self.hasMorePosts = result.posts.count == postsLimit
+                self.isLoadingPosts = false
                 
                 self.setupRealtimeListener()
             } catch {
                 self.errorMessage = error.localizedDescription
+                self.isLoadingPosts = false
             }
         }
     }
@@ -162,7 +167,7 @@ class WallViewModel: ObservableObject {
     
     func deletePost(_ post: Post) {
         if let index = posts.firstIndex(where: { $0.id == post.id }) {
-            withAnimation {
+            _ = withAnimation {
                 posts.remove(at: index)
             }
         }

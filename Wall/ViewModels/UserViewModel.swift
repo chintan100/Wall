@@ -5,7 +5,6 @@
 //  Created by Chintan Patel on 24/05/25.
 //
 
-import SwiftUI
 import FirebaseFirestore
 
 @MainActor
@@ -23,7 +22,7 @@ class UserViewModel: ObservableObject {
     
     deinit {
         userStatusListener?.remove()
-        Task {
+        Task { [userRepository] in
             try? await userRepository.updateUserOnlineStatus(isOnline: false)
         }
     }
