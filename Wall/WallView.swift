@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
+import FirebaseAuth
 
 struct WallView: View {
     
     @StateObject var wallViewModel = WallViewModel()
     @ObservedObject var authViewModel: AuthenticationViewModel
+    @Environment(\.scenePhase) private var scenePhase
     
     var body: some View {
         
@@ -54,7 +56,7 @@ struct WallView: View {
             if wallViewModel.posts.isEmpty && wallViewModel.errorMessage == nil {
                 
                 Spacer()
-                Text("No posts yet. Be the first!")
+                Text(wallViewModel.isMyPostsFilterActive ? "You haven't posted anything yet." : "No posts yet. Be the first!")
                     .foregroundColor(.gray)
                 Spacer()
                 
@@ -70,14 +72,55 @@ struct WallView: View {
                             
                             HStack {
                                 
-                                Image(systemName: "person.circle.fill")
-                                    .resizable()
-                                    .frame(width: 40, height: 40)
-                                    .foregroundColor(.gray)
+                                ZStack { // Use ZStack for ProgressView overlay or fallback
+                                    let user = wallViewModel.usersCache[post.userId]
+                                    let photoURLString = user?.photoURL
+                                    
+                                    if let urlString = photoURLString, let photoDisplayURL = URL(string: urlString) {
+                                        AsyncImage(url: photoDisplayURL) { phase in
+                                            switch phase {
+                                            case .empty:
+                                                ProgressView()
+                                                    .frame(width: 40, height: 40)
+                                            case .success(let image):
+                                                image.resizable()
+                                                     .aspectRatio(contentMode: .fill)
+                                                     .frame(width: 40, height: 40)
+                                                     .clipShape(Circle())
+                                            case .failure:
+                                                Image(systemName: "person.circle.fill")
+                                                    .resizable()
+                                                    .frame(width: 40, height: 40)
+                                                    .foregroundColor(.gray)
+                                            @unknown default:
+                                                EmptyView()
+                                                    .frame(width: 40, height: 40)
+                                            }
+                                        }
+                                    } else if user != nil { // User data loaded, but no photoURL or it's invalid
+                                        Image(systemName: "person.circle.fill")
+                                            .resizable()
+                                            .frame(width: 40, height: 40)
+                                            .foregroundColor(.gray)
+                                    } else { // User data not yet in cache (still fetching)
+                                        ProgressView()
+                                            .frame(width: 40, height: 40)
+                                    }
+                                    
+                                    if let user = wallViewModel.usersCache[post.userId], user.isOnline == true {
+                                        Circle()
+                                            .fill(Color.green)
+                                            .frame(width: 12, height: 12)
+                                            .overlay(
+                                                Circle()
+                                                    .stroke(Color.white, lineWidth: 2)
+                                            )
+                                            .offset(x: 15, y: -15)
+                                    }
+                                }
                                 
                                 VStack(alignment: .leading) {
-                                    
-                                    Text(post.userName)
+                                    Text(wallViewModel.usersCache[post.userId]?.displayName ?? post.userName)
                                         .font(.headline)
                                     Text(post.message)
                                         .font(.body)
@@ -99,6 +142,20 @@ struct WallView: View {
                                 .tint(.red)
                             }
                         }
+                        .onAppear {
+                            if post == wallViewModel.posts.last && wallViewModel.hasMorePosts {
+                                wallViewModel.fetchMorePosts()
+                            }
+                        }
+                    }
+                    
+                    if wallViewModel.isLoadingMore {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(PlainListStyle())
@@ -118,8 +175,32 @@ struct WallView: View {
             ToolbarItem(placement: .navigationBarLeading) {
                 
                 Button("Log Out") {
+                    wallViewModel.setUserOffline()
                     authViewModel.signOut()
                 }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    wallViewModel.toggleMyPostsFilter()
+                } label: {
+                    Image(systemName: wallViewModel.isMyPostsFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                }
+            }
+        }
+        .onAppear {
+            wallViewModel.setUserOnline()
+        }
+        .onDisappear {
+            wallViewModel.setUserOffline()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                wallViewModel.setUserOnline()
+            case .background, .inactive:
+                wallViewModel.setUserOffline()
+            @unknown default:
+                break
             }
         }
     }

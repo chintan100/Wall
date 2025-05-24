@@ -9,6 +9,7 @@ import SwiftUI
 
 struct LoginView: View {
     @StateObject var authViewModel = AuthenticationViewModel()
+    @State private var isSigningIn = false
 
     var body: some View {
         
@@ -19,12 +20,24 @@ struct LoginView: View {
             Spacer()
 
             Button(action: {
-                authViewModel.signInWithGoogle()
+                isSigningIn = true
+                authViewModel.signInWithGoogle {
+                    isSigningIn = false
+                }
             }) {
                 HStack {
-                    
-                    Text("Sign In With Google")
-                        .fontWeight(.bold)
+                    if isSigningIn {
+                        
+                        Text("Signing In...")
+                            .fontWeight(.bold)
+                            .padding(.leading, 5)
+                        
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Sign In With Google")
+                            .fontWeight(.bold)
+                    }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: 44)
@@ -32,6 +45,7 @@ struct LoginView: View {
                 .foregroundColor(.white)
                 .cornerRadius(22)
             }
+            .disabled(isSigningIn)
             .padding(.horizontal, 40)
 
             if let errorMessage = authViewModel.errorMessage {
@@ -43,6 +57,14 @@ struct LoginView: View {
         }
         .navigationTitle("Wall")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            authViewModel.errorMessage = nil
+        }
+        .onChange(of: isSigningIn) { _, newValue in
+            if newValue {
+                authViewModel.errorMessage = nil
+            }
+        }
     }
 }
 
