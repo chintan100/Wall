@@ -28,26 +28,19 @@ struct WallView: View {
                     .font(.system(size: 20))
                     .lineLimit(4)
                 
-//                HStack{
-                    
-                    Button(action: {
-                        
-                        wallViewModel.addPost()
-                        
-                    }) {
-                        Text(wallViewModel.isAddingPost ? "Adding to the wall..." : "Add to the wall")
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 23)
-                            .padding(.horizontal)
-                            .padding(.vertical, 10)
-                            .background(wallViewModel.isAddingPost ? Color.gray : Color("ButtonColor"))
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                    }
-                    .disabled(wallViewModel.isAddingPost)
-                    
-//                    Spacer()
-//                }
+                Button(action: {
+                    wallViewModel.addPost()
+                }) {
+                    Text(wallViewModel.isAddingPost ? "Adding to the wall..." : "Add to the wall")
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 23)
+                        .padding(.horizontal)
+                        .padding(.vertical, 10)
+                        .background(wallViewModel.isAddingPost ? Color.gray : Color("ButtonColor"))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .disabled(wallViewModel.isAddingPost)
             }
             .padding()
             
@@ -73,7 +66,7 @@ struct WallView: View {
                             
                             HStack {
                                 
-                                ZStack { // Use ZStack for ProgressView overlay or fallback
+                                ZStack {
                                     let user = userViewModel.usersCache[post.userId]
                                     let photoURLString = user?.photoURL
                                     
@@ -98,12 +91,12 @@ struct WallView: View {
                                                     .frame(width: 40, height: 40)
                                             }
                                         }
-                                    } else if user != nil { // User data loaded, but no photoURL or it's invalid
+                                    } else if user != nil {
                                         Image(systemName: "person.circle.fill")
                                             .resizable()
                                             .frame(width: 40, height: 40)
                                             .foregroundColor(.gray)
-                                    } else { // User data not yet in cache (still fetching)
+                                    } else {
                                         ProgressView()
                                             .frame(width: 40, height: 40)
                                     }
@@ -147,6 +140,10 @@ struct WallView: View {
                             if post == wallViewModel.posts.last && wallViewModel.hasMorePosts {
                                 wallViewModel.fetchMorePosts()
                             }
+                            
+                            if userViewModel.usersCache[post.userId] == nil {
+                                userViewModel.fetchUserProfiles([post.userId])
+                            }
                         }
                     }
                     
@@ -163,7 +160,6 @@ struct WallView: View {
             }
             
             if let errorMessage = wallViewModel.errorMessage {
-                
                 Text(errorMessage)
                     .foregroundColor(.red)
                     .padding()
@@ -182,7 +178,7 @@ struct WallView: View {
             }
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    wallViewModel.toggleMyPostsFilter(userViewModel: userViewModel)
+                    wallViewModel.toggleMyPostsFilter()
                 } label: {
                     Image(systemName: wallViewModel.isMyPostsFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                 }
@@ -190,7 +186,6 @@ struct WallView: View {
         }
         .onAppear {
             userViewModel.setUserOnline()
-            wallViewModel.setUserViewModel(userViewModel)
         }
         .onDisappear {
             userViewModel.setUserOffline()

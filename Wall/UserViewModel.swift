@@ -7,104 +7,76 @@
 
 import SwiftUI
 import FirebaseFirestore
-import FirebaseAuth
 
+@MainActor
 class UserViewModel: ObservableObject {
     @Published var usersCache: [String: User] = [:]
+    @Published var errorMessage: String?
     
-    private var db = Firestore.firestore()
+    private let userRepository: UserRepositoryProtocol
     private var userStatusListener: ListenerRegistration?
     
-    init() {
+    init(userRepository: UserRepositoryProtocol = UserRepository()) {
+        self.userRepository = userRepository
         listenToUserStatusUpdates()
     }
     
     deinit {
         userStatusListener?.remove()
-        setUserOffline()
+        Task {
+            try? await userRepository.updateUserOnlineStatus(isOnline: false)
+        }
     }
     
     func setUserOnline() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
-        
-        let userRef = db.collection("users").document(currentUserId)
-        userRef.updateData([
-            "isOnline": true,
-            "lastSeen": Timestamp(date: Date())
-        ]) { error in
-            if let error = error {
-                print("Error setting user online: \(error.localizedDescription)")
+        Task {
+            do {
+                try await userRepository.updateUserOnlineStatus(isOnline: true)
+            } catch {
+                self.errorMessage = error.localizedDescription
             }
         }
     }
     
     func setUserOffline() {
-        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
-        
-        let userRef = db.collection("users").document(currentUserId)
-        userRef.updateData([
-            "isOnline": false,
-            "lastSeen": Timestamp(date: Date())
-        ]) { error in
-            if let error = error {
-                print("Error setting user offline: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    private func listenToUserStatusUpdates() {
-        userStatusListener = db.collection("users").addSnapshotListener { [weak self] querySnapshot, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Error listening to user status updates: \(error.localizedDescription)")
-                return
-            }
-            
-            guard let snapshot = querySnapshot else { return }
-            
-            snapshot.documentChanges.forEach { diff in
-                guard let updatedUser = try? diff.document.data(as: User.self) else { return }
-                
-                switch diff.type {
-                case .added, .modified:
-                    self.usersCache[updatedUser.uid] = updatedUser
-                case .removed:
-                    self.usersCache.removeValue(forKey: updatedUser.uid)
-                }
+        Task {
+            do {
+                try await userRepository.updateUserOnlineStatus(isOnline: false)
+            } catch {
+                self.errorMessage = error.localizedDescription
             }
         }
     }
     
     func fetchUserProfiles(_ userIds: [String]) {
         guard !userIds.isEmpty else { return }
-
-        let dbUsers = db.collection("users")
-        let chunks = userIds.chunked(into: 10)
-
-        for chunk in chunks {
-            guard !chunk.isEmpty else { continue }
-            
-            dbUsers.whereField(FieldPath.documentID(), in: chunk).getDocuments { [weak self] (querySnapshot, error) in
-                guard let self = self else { return }
-
-                if let error = error {
-                    print("Error fetching user profiles for chunk \(chunk.joined(separator: ", ")): \(error.localizedDescription)")
-                    return
+        
+        // Filter out users we already have
+        let uncachedUserIds = userIds.filter { !usersCache.keys.contains($0) }
+        guard !uncachedUserIds.isEmpty else { return }
+        
+        Task {
+            do {
+                let users = try await userRepository.fetchUsers(userIds: uncachedUserIds)
+                for user in users {
+                    self.usersCache[user.uid] = user
                 }
-
-                guard let documents = querySnapshot?.documents else {
-                    print("No documents found for user profile chunk \(chunk.joined(separator: ", ")).")
-                    return
-                }
-
-                for document in documents {
-                    do {
-                        let user = try document.data(as: User.self)
-                        self.usersCache[user.uid] = user
-                    } catch {
-                        print("Error decoding user profile for \(document.documentID): \(error.localizedDescription)")
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+    
+    private func listenToUserStatusUpdates() {
+        userStatusListener = userRepository.listenToUserUpdates { [weak self] (result: Result<[User], Error>) in
+            Task { @MainActor [weak self] in
+                switch result {
+                case .success(let users):
+                    for user in users {
+                        self?.usersCache[user.uid] = user
                     }
+                case .failure(let error):
+                    self?.errorMessage = error.localizedDescription
                 }
             }
         }
