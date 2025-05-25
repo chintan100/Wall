@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct LoginView: View {
-    @StateObject var authViewModel = AuthenticationViewModel()
+    @ObservedObject var authViewModel: AuthenticationViewModel
     @State private var isSigningIn = false
 
     var body: some View {
@@ -71,6 +71,6 @@ struct LoginView: View {
 
 struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
-        LoginView()
+        LoginView(authViewModel: AuthenticationViewModel())
     }
 }
