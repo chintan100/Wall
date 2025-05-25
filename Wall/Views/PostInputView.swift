@@ -16,8 +16,10 @@ struct PostInputView: View {
                 .textFieldStyle(DefaultTextFieldStyle())
                 .font(.system(size: 20))
                 .lineLimit(4)
+                .accessibilityIdentifier("postInputTextField")
             
             Button(action: {
+                hideKeyboard()
                 wallViewModel.addPost()
             }) {
                 Text(wallViewModel.isAddingPost ? "Adding to the wall..." : "Add to the wall")
@@ -29,8 +31,13 @@ struct PostInputView: View {
                     .foregroundColor(.white)
                     .cornerRadius(8)
             }
+            .accessibilityIdentifier("postButton")
             .disabled(wallViewModel.isAddingPost)
         }
         .padding()
+    }
+    
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }

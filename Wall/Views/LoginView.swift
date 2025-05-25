@@ -45,6 +45,7 @@ struct LoginView: View {
                 .foregroundColor(.white)
                 .cornerRadius(22)
             }
+            .accessibilityIdentifier("signInWithGoogleButton")
             .disabled(isSigningIn)
             .padding(.horizontal, 40)
 

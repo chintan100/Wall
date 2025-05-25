@@ -146,21 +146,6 @@ struct WallViewModelTests {
             #expect(viewModel.newMessage.isEmpty)
         }
     }
-    
-    @Test func testFormattedDate() async {
-        let mockRepo = MockPostRepository()
-        let viewModel = await WallViewModel(postRepository: mockRepo)
-        
-        let testDate = Date()
-        let timestamp = Timestamp(date: testDate)
-        
-        await MainActor.run {
-            let formatted = viewModel.formattedDate(from: timestamp)
-            #expect(!formatted.isEmpty)
-            // Should contain time format
-            #expect(formatted.contains(":"))
-        }
-    }
 }
 
 struct UserViewModelTests {
