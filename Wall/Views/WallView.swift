@@ -50,12 +50,6 @@ struct WallView: View {
                 }
             }
         }
-        .onAppear {
-            userViewModel.setUserOnline()
-        }
-        .onDisappear {
-            userViewModel.setUserOffline()
-        }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {
             case .active:
