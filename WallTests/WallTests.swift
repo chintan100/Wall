@@ -25,6 +25,9 @@ class MockPostRepository: PostRepositoryProtocol {
     var lastAddMessage: String?
     var lastDeletePost: Post?
     
+    private var posts: [Post] = []
+    private var listenersCompletion: [(Result<[Post], Error>) -> Void] = []
+    
     func fetchPosts(limit: Int, startAfter: DocumentSnapshot?, filterByCurrentUser: Bool) async throws -> (posts: [Post], lastDocument: DocumentSnapshot?) {
         fetchPostsCalled = true
         lastFetchLimit = limit
@@ -35,6 +38,22 @@ class MockPostRepository: PostRepositoryProtocol {
         addPostCalled = true
         lastAddMessage = message
         try addPostResult.get()
+        
+        let newPost = Post(
+            id: UUID().uuidString,
+            message: message,
+            userName: "Test User",
+            userId: "test-user-id",
+            timestamp: Timestamp(date: Date())
+        )
+        posts.append(newPost)
+        
+        Task { @MainActor in
+            // Notify all listeners
+            for completion in listenersCompletion {
+                completion(.success(posts))
+            }
+        }
     }
     
     func deletePost(_ post: Post) async throws {
@@ -45,6 +64,7 @@ class MockPostRepository: PostRepositoryProtocol {
     
     func listenToPosts(limit: Int, filterByCurrentUser: Bool, completion: @escaping (Result<[Post], Error>) -> Void) -> ListenerRegistration? {
         listenToPostsCalled = true
+        listenersCompletion.append(completion)
         return nil
     }
     
@@ -131,19 +151,46 @@ struct WallViewModelTests {
         let viewModel = await WallViewModel(postRepository: mockRepo)
         
         await MainActor.run {
-            viewModel.newMessage = "Test message"
+            viewModel.newMessage = "Test message 1"
+            viewModel.addPost()
+            
+            sleep(1)
+            viewModel.newMessage = "Test message 2"
+            viewModel.addPost()
+            
+            #expect(viewModel.isAddingPost == true)
+        }
+        
+        sleep(2)
+        
+        await MainActor.run {
+            #expect(mockRepo.addPostCalled == true)
+            #expect(mockRepo.lastAddMessage == "Test message 2")
+            #expect(viewModel.isAddingPost == false)
+            #expect(viewModel.posts.count == 2)
+            #expect(viewModel.newMessage.isEmpty)
+        }
+    }
+    
+    @Test func testAddPostWithRealRepository() async {
+        let realRepo = PostRepository()
+        let viewModel = await WallViewModel(postRepository: realRepo)
+        
+        await MainActor.run {
+            viewModel.newMessage = "Test integration message"
             viewModel.addPost()
             #expect(viewModel.isAddingPost == true)
         }
         
-        // Wait for async operation
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Wait for async operation to complete
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
         
         await MainActor.run {
-            #expect(mockRepo.addPostCalled == true)
-            #expect(mockRepo.lastAddMessage == "Test message")
+            // Should fail because no authenticated user
+            #expect(viewModel.errorMessage?.contains("authenticated") == true)
             #expect(viewModel.isAddingPost == false)
-            #expect(viewModel.newMessage.isEmpty)
+            #expect(viewModel.posts.isEmpty)
+            #expect(viewModel.newMessage == "Test integration message") // Message should remain
         }
     }
 }
