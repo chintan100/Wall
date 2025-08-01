@@ -178,7 +178,6 @@ class WallViewModel: ObservableObject {
                 self.errorMessage = nil
             } catch {
                 self.errorMessage = error.localizedDescription
-                self.fetchPosts()
             }
         }
     }
